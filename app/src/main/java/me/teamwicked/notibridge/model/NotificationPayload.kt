@@ -75,6 +75,20 @@ data class NotificationPayload(
             return digest.joinToString("") { "%02x".format(it) }.take(32)
         }
 
+        /**
+         * Preferred key: Android's own stable notification key when available,
+         * falling back to the content hash. sbn.key stays constant across
+         * updates of the same notification, so updated messages dedupe better.
+         */
+        fun buildDedupeKey(notificationKey: String?, appPackage: String, title: String, text: String, timestampMillis: Long): String {
+            if (!notificationKey.isNullOrBlank()) {
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(notificationKey.toByteArray(Charsets.UTF_8))
+                return digest.joinToString("") { "%02x".format(it) }.take(32)
+            }
+            return buildDedupeKey(appPackage, title, text, timestampMillis)
+        }
+
         /** Payload used by the "테스트" flows in the hook editor. */
         fun sample(): NotificationPayload = NotificationPayload(
             appPackage = "com.example.chat",

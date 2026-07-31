@@ -82,6 +82,14 @@ class DeliveryWorker(
     ) {
         val hook = taskRepo.decodeHook(task)
         val payload = taskRepo.decodePayload(task)
+        // The hook may have been deleted while the task sat in the queue;
+        // sending for a deleted hook would be surprising (and its log row
+        // would point at nothing), so skip and drop the task.
+        val app = applicationContext as NotiBridgeApp
+        if (app.hookRepository.findHook(task.hookId) == null) {
+            taskRepo.complete(task)
+            return
+        }
         val startedAt = System.currentTimeMillis()
 
         val outcome = sender.send(hook, payload)

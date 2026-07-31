@@ -13,6 +13,7 @@ import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import java.util.concurrent.ConcurrentHashMap
 
 /** Outcome of one HTTP attempt. */
 data class SendOutcome(
@@ -37,6 +38,40 @@ class WebhookSender(
     private val globalsProvider: suspend () -> Map<String, String>,
     private val globalsPublisher: suspend (Map<String, String>) -> Unit,
 ) {
+
+    companion object {
+        /** Response bodies are capped before they reach memory/log storage. */
+        private const val RESPONSE_BODY_MAX_CHARS = 16_000
+
+        /**
+         * One client per distinct timeout, reused across sends: building an
+         * OkHttpClient allocates thread pools, so per-call construction is wasteful.
+         */
+        private val clientCache = ConcurrentHashMap<Int, OkHttpClient>()
+
+        private fun clientFor(timeoutSeconds: Int): OkHttpClient =
+            clientCache.getOrPut(timeoutSeconds) {
+                OkHttpClient.Builder()
+                    .connectTimeout(timeoutSeconds.toLong(), TimeUnit.SECONDS)
+                    .readTimeout(timeoutSeconds.toLong(), TimeUnit.SECONDS)
+                    .writeTimeout(timeoutSeconds.toLong(), TimeUnit.SECONDS)
+                    .followRedirects(true)
+                    .build()
+            }
+
+        /** Reads at most [maxChars] from the stream; safe for huge responses. */
+        private fun readCapped(reader: java.io.Reader, maxChars: Int): String {
+            val buffer = CharArray(8_192)
+            val out = StringBuilder()
+            while (out.length < maxChars) {
+                val toRead = minOf(buffer.size, maxChars - out.length)
+                val n = runCatching { reader.read(buffer, 0, toRead) }.getOrDefault(-1)
+                if (n == -1) break
+                out.append(buffer, 0, n)
+            }
+            return out.toString()
+        }
+    }
 
     suspend fun send(
         hook: Hook,
@@ -66,6 +101,7 @@ class WebhookSender(
                         payload = payload,
                         variables = extraction.localVariables,
                         globals = globals,
+                        escapeForJson = hook.contentType == ContentType.JSON,
                     ).toByteArray(Charsets.UTF_8)
                 }
             }
@@ -74,6 +110,7 @@ class WebhookSender(
                 payload = payload,
                 variables = extraction.localVariables,
                 globals = globals,
+                escapeForJson = hook.contentType == ContentType.JSON,
             ).toByteArray(Charsets.UTF_8)
         }
 
@@ -121,18 +158,15 @@ class WebhookSender(
             HttpMethod.PUT -> requestBuilder.put(requestBody ?: ByteArray(0).toRequestBody(null))
         }
 
-        val client = OkHttpClient.Builder()
-            .connectTimeout(hook.timeoutSeconds.toLong(), TimeUnit.SECONDS)
-            .readTimeout(hook.timeoutSeconds.toLong(), TimeUnit.SECONDS)
-            .writeTimeout(hook.timeoutSeconds.toLong(), TimeUnit.SECONDS)
-            .followRedirects(true)
-            .build()
+        val client = clientFor(hook.timeoutSeconds.coerceIn(1, 120))
 
         val startedAt = System.nanoTime()
         return try {
             client.newCall(requestBuilder.build()).execute().use { response ->
                 val elapsed = (System.nanoTime() - startedAt) / 1_000_000
-                val responseBody = response.body?.string().orEmpty()
+                val responseBody = response.body?.charStream()?.use { reader ->
+                    readCapped(reader, RESPONSE_BODY_MAX_CHARS)
+                }.orEmpty()
                 SendOutcome(
                     success = response.isSuccessful,
                     responseCode = response.code,

@@ -20,15 +20,42 @@ object TemplateEngine {
 
     private val TOKEN = Regex("\\{([A-Za-z0-9_.]+)}")
 
+    /**
+     * When [escapeForJson] is true (Content-Type JSON), substituted values are
+     * JSON-escaped so a notification containing quotes or newlines can never
+     * corrupt the surrounding template. notifyhook does this unconditionally;
+     * we do it per content type so XML/text bodies stay readable.
+     */
     fun render(
         template: String,
         payload: NotificationPayload,
         variables: Map<String, String>,
         globals: Map<String, String>,
+        escapeForJson: Boolean = false,
     ): String {
         if (template.isEmpty()) return template
         return TOKEN.replace(template) { match ->
-            resolve(match.groupValues[1], payload, variables, globals) ?: match.value
+            val raw = resolve(match.groupValues[1], payload, variables, globals)
+                ?: return@replace match.value
+            if (escapeForJson && match.groupValues[1] != "notification") {
+                escapeJson(raw)
+            } else {
+                raw
+            }
+        }
+    }
+
+    /** Escapes a value for safe embedding inside a JSON string literal. */
+    fun escapeJson(value: String): String = buildString(value.length + 8) {
+        value.forEach { c ->
+            when (c) {
+                '"' -> append("\\\"")
+                '\\' -> append("\\\\")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> if (c < ' ') append("\\u%04x".format(c.code)) else append(c)
+            }
         }
     }
 
@@ -54,6 +81,8 @@ object TemplateEngine {
         "ticker" -> payload.tickerText
         "app_name" -> payload.appName
         "app_package" -> payload.appPackage
+        // notifyhook 호환 별칭
+        "package" -> payload.appPackage
         "timestamp" -> payload.timestampIso
         "timestamp_unix" -> (payload.timestampMillis / 1000).toString()
         else -> when {
@@ -76,11 +105,21 @@ object RegexExtractor {
         val globalVariables: Map<String, String>,
     )
 
+    /** Compiled-pattern cache; regex compilation dominates extraction cost. */
+    private val patternCache = object : LinkedHashMap<String, Regex>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Regex>?): Boolean =
+            size > 128
+    }
+
+    private fun compile(pattern: String): Regex = synchronized(patternCache) {
+        patternCache.getOrPut(pattern) { Regex(pattern) }
+    }
+
     fun extract(rules: List<RegexRule>, payload: NotificationPayload): Result {
         val local = LinkedHashMap<String, String>()
         val global = LinkedHashMap<String, String>()
         rules.forEach { rule ->
-            val regex = runCatching { Regex(rule.pattern) }.getOrNull() ?: return@forEach
+            val regex = runCatching { compile(rule.pattern) }.getOrNull() ?: return@forEach
             val target = when (rule.source) {
                 RegexSource.TITLE -> payload.title
                 RegexSource.TEXT -> payload.text

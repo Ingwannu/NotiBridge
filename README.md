@@ -29,6 +29,8 @@ Kotlin + Jetpack Compose + Room + WorkManager + OkHttp로 작성됐습니다.
   - `{big_text}`, `{summary}`, `{ticker}`
   - `{app_name}`, `{app_package}`
   - `{timestamp}` (ISO-8601), `{timestamp_unix}` (초)
+  - `{package}`는 `{app_package}` 별칭
+  - Content-Type이 JSON이면 치환값은 JSON 이스케이프 처리됨 (따옴표/줄바꿈 안전)
 
 ### 정규식 데이터 추출
 - 알림 제목·내용·전체(제목+내용)를 정규식으로 분석
@@ -54,6 +56,8 @@ Kotlin + Jetpack Compose + Room + WorkManager + OkHttp로 작성됐습니다.
 ### 백그라운드 안정성
 - 부팅·앱 업데이트 후 자동 재개 (`BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`)
 - 포그라운드 서비스 상태 확인 및 수동 재시작 (설정 탭)
+- 15분 간격 워치독 알람이 서비스·큐를 자가 복구 (OEM 작업 관리자 대응)
+- 알림 수신~큐 적재 구간 PARTIAL_WAKE_LOCK으로 doze 중에도 유실 방지
 - 실패한 전송은 10초부터 지수 백오프(최대 15분 간격), 최대 8회 자동 재시도
   - 재시도는 Room 큐 + WorkManager로 구현돼 재부팅/프로세스 종료에도 유지
 - 동시에 처리할 최대 훅 수 설정 (1~16, 설정 탭)

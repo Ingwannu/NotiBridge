@@ -61,6 +61,32 @@ class TemplateEngineTest {
         val out = TemplateEngine.render("{nope}", payload(), emptyMap(), emptyMap())
         assertEquals("{nope}", out)
     }
+
+    @Test
+    fun `package alias resolves like app_package`() {
+        val out = TemplateEngine.render("{package}", payload(), emptyMap(), emptyMap())
+        assertEquals("com.kakao.talk", out)
+    }
+
+    @Test
+    fun `json escape protects quotes and newlines when enabled`() {
+        val tricky = payload().copy(title = "따옴표\"와\n줄바꿈")
+        val raw = TemplateEngine.render("{\"t\":\"{title}\"}", tricky, emptyMap(), emptyMap())
+        assertEquals("{\"t\":\"따옴표\"와\n줄바꿈\"}", raw) // invalid JSON without escaping
+
+        val escaped = TemplateEngine.render(
+            "{\"t\":\"{title}\"}", tricky, emptyMap(), emptyMap(), escapeForJson = true,
+        )
+        assertEquals("{\"t\":\"따옴표\\\"와\\n줄바꿈\"}", escaped)
+    }
+
+    @Test
+    fun `notification token is not double-escaped when json escaping`() {
+        val out = TemplateEngine.render(
+            "{notification}", payload(), emptyMap(), emptyMap(), escapeForJson = true,
+        )
+        assertEquals(true, out.startsWith("{\"app_package\""))
+    }
 }
 
 class RegexExtractorTest {

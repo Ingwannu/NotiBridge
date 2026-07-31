@@ -114,10 +114,18 @@ class KeepAliveService : Service() {
     override fun onCreate() {
         super.onCreate()
         markRunning(this, true)
+        me.teamwicked.notibridge.receiver.WatchdogReceiver.schedule(this)
     }
 
     override fun onDestroy() {
         markRunning(this, false)
         super.onDestroy()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // User swiped the app away: make sure the watchdog survives so the
+        // listener + queue recover even if the system kills the process.
+        me.teamwicked.notibridge.receiver.WatchdogReceiver.schedule(this)
+        super.onTaskRemoved(rootIntent)
     }
 }

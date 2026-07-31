@@ -1,7 +1,9 @@
 package me.teamwicked.notibridge.service
 
 import android.app.Notification
+import android.content.Context
 import android.content.pm.PackageManager
+import android.os.PowerManager
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import kotlinx.coroutines.CoroutineScope
@@ -47,22 +49,31 @@ class NotificationHookService : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val payload = snapshot(sbn) ?: return
         val app = application as NotiBridgeApp
+        // Hold the CPU until matching hooks are queued; on dozing devices the
+        // process can otherwise be frozen between callback and DB write.
+        val wakeLock = (getSystemService(Context.POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "NotiBridge::Dispatch")
+            .apply { acquire(10_000L) }
         scope.launch {
-            val hooks = app.hookRepository.listEnabledHooks()
-            var enqueued = false
-            hooks.forEach { hook ->
-                if (!matches(hook, payload)) return@forEach
-                // Check + insert run in one transaction so two notifications
-                // arriving back-to-back cannot both pass the dedupe check.
-                val inserted = app.deliveryTaskRepository.enqueueIfNotDuplicate(
-                    hook = hook,
-                    payload = payload,
-                    windowMs = app.settingsRepository.dedupeWindowMs,
-                )
-                if (inserted) enqueued = true
-            }
-            if (enqueued) {
-                DeliveryDispatcher.kick(this@NotificationHookService)
+            try {
+                val hooks = app.hookRepository.listEnabledHooks()
+                var enqueued = false
+                hooks.forEach { hook ->
+                    if (!matches(hook, payload)) return@forEach
+                    // Check + insert run in one transaction so two notifications
+                    // arriving back-to-back cannot both pass the dedupe check.
+                    val inserted = app.deliveryTaskRepository.enqueueIfNotDuplicate(
+                        hook = hook,
+                        payload = payload,
+                        windowMs = app.settingsRepository.dedupeWindowMs,
+                    )
+                    if (inserted) enqueued = true
+                }
+                if (enqueued) {
+                    DeliveryDispatcher.kick(this@NotificationHookService)
+                }
+            } finally {
+                if (wakeLock.isHeld) wakeLock.release()
             }
         }
     }
@@ -96,7 +107,13 @@ class NotificationHookService : NotificationListenerService() {
             summaryText = charSequence(Notification.EXTRA_SUMMARY_TEXT),
             tickerText = notification.tickerText?.toString().orEmpty(),
             timestampMillis = postedAt,
-            dedupeKey = NotificationPayload.buildDedupeKey(sbn.packageName.orEmpty(), title, text, postedAt),
+            dedupeKey = NotificationPayload.buildDedupeKey(
+                notificationKey = sbn.key,
+                appPackage = sbn.packageName.orEmpty(),
+                title = title,
+                text = text,
+                timestampMillis = postedAt,
+            ),
         )
     }
 
