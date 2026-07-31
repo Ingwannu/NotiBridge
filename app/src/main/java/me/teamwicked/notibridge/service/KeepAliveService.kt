@@ -72,6 +72,12 @@ class KeepAliveService : Service() {
             .setSilent(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            // Fires when the user swipes the notification away; the receiver
+            // re-posts it instantly, so it behaves as non-dismissible.
+            .setDeleteIntent(
+                me.teamwicked.notibridge.receiver.ServiceNotificationDismissedReceiver
+                    .deleteIntent(this),
+            )
             .build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -94,7 +100,17 @@ class KeepAliveService : Service() {
 
     companion object {
         private const val TAG = "KeepAliveService"
-        private const val REPOST_INTERVAL_MS = 30_000L
+        private const val REPOST_INTERVAL_MS = 5_000L
+
+        /**
+         * Re-posts the foreground notification by bouncing the service. Cheap
+         * enough for a dismiss-triggered immediate refresh.
+         */
+        fun repostNotification(context: Context) {
+            runCatching {
+                context.startForegroundService(Intent(context, KeepAliveService::class.java))
+            }
+        }
 
         fun start(context: Context) {
             val intent = Intent(context, KeepAliveService::class.java)
