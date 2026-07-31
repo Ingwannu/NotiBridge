@@ -76,6 +76,8 @@ fun SettingsScreen() {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            CrashLogCard()
+
             Card {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("백그라운드 서비스", style = MaterialTheme.typography.titleMedium)
