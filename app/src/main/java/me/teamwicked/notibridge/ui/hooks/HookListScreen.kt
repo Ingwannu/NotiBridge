@@ -19,8 +19,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -95,7 +95,7 @@ fun HookListScreen(
                 title = { Text("웹훅") },
                 actions = {
                     IconButton(onClick = { importLauncher.launch(arrayOf("*/*")) }) {
-                        Icon(Icons.Filled.FileUpload, contentDescription = ".notif 가져오기")
+                        Icon(Icons.Filled.KeyboardArrowUp, contentDescription = ".notif 가져오기")
                     }
                 },
             )
@@ -211,7 +211,7 @@ private fun HookCard(
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
                             text = { Text("프리셋 보내기 (.notif)") },
-                            leadingIcon = { Icon(Icons.Filled.FileDownload, null) },
+                            leadingIcon = { Icon(Icons.Filled.KeyboardArrowDown, null) },
                             onClick = {
                                 menuOpen = false
                                 onExport()

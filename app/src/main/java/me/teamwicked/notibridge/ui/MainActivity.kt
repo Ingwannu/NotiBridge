@@ -9,8 +9,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -91,8 +91,8 @@ private fun NotiBridgeNavHost(
 ) {
     val navController = rememberNavController()
     val destinations = listOf(
-        TopLevelDestination(Routes.HOOKS, "훅", Icons.Filled.Hub),
-        TopLevelDestination(Routes.LOGS, "로그", Icons.Filled.History),
+        TopLevelDestination(Routes.HOOKS, "훅", Icons.Filled.Share),
+        TopLevelDestination(Routes.LOGS, "로그", Icons.AutoMirrored.Filled.List),
         TopLevelDestination(Routes.SETTINGS, "설정", Icons.Filled.Settings),
     )
 

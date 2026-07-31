@@ -35,6 +35,29 @@ class NotiBridgeApp : Application() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannels()
+        installCrashLogger()
+    }
+
+    /**
+     * Writes uncaught exceptions to a file before dying. The file survives the
+     * crash, so the next launch (or `adb pull`) can reveal the real stack
+     * instead of guessing from "app closes" reports.
+     */
+    private fun installCrashLogger() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            runCatching {
+                val file = java.io.File(filesDir, "last-crash.txt")
+                file.writeText(
+                    buildString {
+                        appendLine("thread=${thread.name}")
+                        appendLine("time=${System.currentTimeMillis()}")
+                        appendLine(android.util.Log.getStackTraceString(throwable))
+                    },
+                )
+            }
+            previous?.uncaughtException(thread, throwable)
+        }
     }
 
     private fun createNotificationChannels() {
