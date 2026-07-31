@@ -87,6 +87,14 @@ class TemplateEngineTest {
         )
         assertEquals(true, out.startsWith("{\"app_package\""))
     }
+
+    @Test
+    fun `token regex is icu safe and matches braces`() {
+        // Regression test: the previous pattern used "\{" which crashes on
+        // Android's ICU regex at class init on some devices.
+        val out = TemplateEngine.render("{title}{text}", payload(), emptyMap(), emptyMap())
+        assertEquals("홍길동결제금액 12,500원 확인됐습니다", out)
+    }
 }
 
 class RegexExtractorTest {

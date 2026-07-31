@@ -18,7 +18,10 @@ import me.teamwicked.notibridge.model.RegexSource
  */
 object TemplateEngine {
 
-    private val TOKEN = Regex("\\{([A-Za-z0-9_.]+)}")
+    // ICU (Android) rejects the JVM-style "\{" escape when no quantifier
+    // follows, so use a character class for the literal braces instead.
+    // This crashed the whole class on Samsung/ICU devices at <clinit>.
+    private val TOKEN = Regex("[{]([A-Za-z0-9_.]+)[}]")
 
     /**
      * When [escapeForJson] is true (Content-Type JSON), substituted values are
