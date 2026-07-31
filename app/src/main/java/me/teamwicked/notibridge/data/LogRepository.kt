@@ -172,7 +172,7 @@ class DeliveryTaskRepository(private val db: AppDatabase) {
      * dedupe key inside [windowMs]. Checks both the live queue and the log
      * mirror so a just-completed delivery is still deduped.
      */
-    suspend fun isDuplicate(hookId: String, dedupeKey: String, windowMs: Long): Boolean {
+    private suspend fun isDuplicate(hookId: String, dedupeKey: String, windowMs: Long): Boolean {
         val since = System.currentTimeMillis() - windowMs
         return db.deliveryTaskDao().countRecentTaskDuplicates(hookId, dedupeKey, since) > 0 ||
             db.deliveryTaskDao().countRecentLogDuplicates(hookId, dedupeKey, since) > 0

@@ -52,22 +52,43 @@ class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    /** Pending .notif preset URI delivered via VIEW intent; consumed by the nav host. */
+    private val pendingPresetUri = androidx.compose.runtime.mutableStateOf<android.net.Uri?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (PermissionUtils.needsPostNotificationPermission()) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+        handleViewIntent(intent)
         setContent {
             NotiBridgeTheme {
-                NotiBridgeNavHost()
+                NotiBridgeNavHost(
+                    pendingPresetUri = pendingPresetUri.value,
+                    onPresetConsumed = { pendingPresetUri.value = null },
+                )
             }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleViewIntent(intent)
+    }
+
+    private fun handleViewIntent(intent: android.content.Intent?) {
+        if (intent?.action == android.content.Intent.ACTION_VIEW) {
+            intent.data?.let { pendingPresetUri.value = it }
         }
     }
 }
 
 @Composable
-private fun NotiBridgeNavHost() {
+private fun NotiBridgeNavHost(
+    pendingPresetUri: android.net.Uri?,
+    onPresetConsumed: () -> Unit,
+) {
     val navController = rememberNavController()
     val destinations = listOf(
         TopLevelDestination(Routes.HOOKS, "훅", Icons.Filled.Hub),
@@ -113,6 +134,8 @@ private fun NotiBridgeNavHost() {
                 HookListScreen(
                     onCreateHook = { navController.navigate(Routes.EDITOR_NEW) },
                     onEditHook = { id -> navController.navigate(Routes.editor(id)) },
+                    externalPresetUri = pendingPresetUri,
+                    onExternalPresetConsumed = onPresetConsumed,
                 )
             }
             composable(Routes.LOGS) { LogsScreen() }

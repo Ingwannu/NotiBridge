@@ -25,7 +25,11 @@ import me.teamwicked.notibridge.ui.MainActivity
 class KeepAliveService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForegroundCompat()
+        // POST_NOTIFICATIONS denied on Android 13+ makes startForeground throw;
+        // fall back to a normal sticky service instead of crashing the app.
+        runCatching { startForegroundCompat() }.onFailure {
+            android.util.Log.w(TAG, "startForeground failed, running as background service", it)
+        }
         // If the listener lost its binding (OEM kill, permission revoke),
         // requestRebind nudges the system to restore it.
         runCatching {
@@ -74,10 +78,15 @@ class KeepAliveService : Service() {
     }
 
     companion object {
+        private const val TAG = "KeepAliveService"
 
         fun start(context: Context) {
             val intent = Intent(context, KeepAliveService::class.java)
+            // From a boot receiver, FGS launch restrictions (Android 12+)
+            // can throw; retry as a plain service so the app never crashes
+            // during boot-time recovery.
             runCatching { context.startForegroundService(intent) }
+                .recoverCatching { context.startService(intent) }
         }
 
         fun stop(context: Context) {

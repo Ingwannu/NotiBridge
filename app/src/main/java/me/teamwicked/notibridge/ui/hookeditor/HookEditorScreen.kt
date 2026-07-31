@@ -83,9 +83,13 @@ fun HookEditorScreen(
     var testResult by remember { mutableStateOf<SendOutcome?>(null) }
     var testRunning by remember { mutableStateOf(false) }
 
+    // Load once. Without the loaded guard, a user who starts typing before
+    // the DB read returns would have their input overwritten by the load.
     LaunchedEffect(hookId) {
         if (hookId != null) {
-            app.hookRepository.findHook(hookId)?.let { hook = it }
+            if (!loaded) {
+                app.hookRepository.findHook(hookId)?.let { hook = it }
+            }
             loaded = true
         }
     }
@@ -299,7 +303,13 @@ fun HookEditorScreen(
                         testRunning = true
                         testResult = null
                         testResult = runCatching {
-                            app.webhookSender.send(hook, NotificationPayload.sample())
+                            // publishGlobals = false: a test send must not leak
+                            // its captures into the shared global store.
+                            app.webhookSender.send(
+                                hook,
+                                NotificationPayload.sample(),
+                                publishGlobals = false,
+                            )
                         }.getOrElse { e ->
                             SendOutcome(false, null, "", e.message ?: "오류", 0, "")
                         }

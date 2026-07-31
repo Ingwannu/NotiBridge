@@ -62,10 +62,13 @@ import me.teamwicked.notibridge.ui.components.PermissionBanner
 fun HookListScreen(
     onCreateHook: () -> Unit,
     onEditHook: (String) -> Unit,
+    externalPresetUri: Uri? = null,
+    onExternalPresetConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as NotiBridgeApp
-    val hooks by app.hookRepository.observeHooks().collectAsState(initial = emptyList())
+    // null = still loading; avoids flashing the empty state on cold start.
+    val hooks by app.hookRepository.observeHooks().collectAsState(initial = null)
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -75,17 +78,14 @@ fun HookListScreen(
         ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            runCatching {
-                val raw = context.contentResolver.openInputStream(uri)
-                    ?.readBytes()?.toString(Charsets.UTF_8)
-                    ?: error("파일을 읽을 수 없습니다.")
-                val hook = app.hookRepository.importPreset(raw)
-                app.hookRepository.saveHook(hook.copy(enabled = false))
-                snackbar.showSnackbar("프리셋을 새 훅으로 가져왔습니다: ${hook.name}")
-            }.onFailure { e ->
-                snackbar.showSnackbar("가져오기 실패: ${e.message}")
-            }
+        scope.launch { importPreset(context, app, uri, snackbar) }
+    }
+
+    // A .notif file opened from another app lands here via VIEW intent.
+    androidx.compose.runtime.LaunchedEffect(externalPresetUri) {
+        if (externalPresetUri != null) {
+            importPreset(context, app, externalPresetUri, snackbar)
+            onExternalPresetConsumed()
         }
     }
 
@@ -114,7 +114,12 @@ fun HookListScreen(
         ) {
             PermissionBanner()
 
-            if (hooks.isEmpty()) {
+            val hookList = hooks
+            if (hookList == null) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.CircularProgressIndicator()
+                }
+            } else if (hookList.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
                         "아직 훅이 없습니다.\n+ 버튼으로 첫 웹훅을 만들어 보세요.",
@@ -127,7 +132,7 @@ fun HookListScreen(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    items(hooks, key = { it.id }) { hook ->
+                    items(hookList, key = { it.id }) { hook ->
                         HookCard(
                             hook = hook,
                             onToggle = { enabled ->
@@ -264,4 +269,22 @@ private fun exportPreset(context: Context, json: String, hookName: String): Uri 
     }
     context.startActivity(android.content.Intent.createChooser(share, ".notif 보내기"))
     return uri
+}
+
+private suspend fun importPreset(
+    context: Context,
+    app: NotiBridgeApp,
+    uri: Uri,
+    snackbar: androidx.compose.material3.SnackbarHostState,
+) {
+    runCatching {
+        val raw = context.contentResolver.openInputStream(uri)
+            ?.readBytes()?.toString(Charsets.UTF_8)
+            ?: error("파일을 읽을 수 없습니다.")
+        val hook = app.hookRepository.importPreset(raw)
+        app.hookRepository.saveHook(hook.copy(enabled = false))
+        snackbar.showSnackbar("프리셋을 새 훅으로 가져왔습니다: ${hook.name}")
+    }.onFailure { e ->
+        snackbar.showSnackbar("가져오기 실패: ${e.message}")
+    }
 }

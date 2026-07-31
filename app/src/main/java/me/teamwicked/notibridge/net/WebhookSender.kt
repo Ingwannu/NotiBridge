@@ -42,9 +42,10 @@ class WebhookSender(
         hook: Hook,
         payload: NotificationPayload,
         overrideBody: ByteArray? = null,
+        publishGlobals: Boolean = true,
     ): SendOutcome {
         val extraction = RegexExtractor.extract(hook.regexRules, payload)
-        if (extraction.globalVariables.isNotEmpty()) {
+        if (publishGlobals && extraction.globalVariables.isNotEmpty()) {
             // Global captures must be visible to subsequent hooks immediately.
             globalsPublisher(extraction.globalVariables)
         }

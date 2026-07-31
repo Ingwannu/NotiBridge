@@ -58,7 +58,7 @@ import me.teamwicked.notibridge.data.SendLogEntity
 fun LogsScreen() {
     val context = LocalContext.current
     val app = context.applicationContext as NotiBridgeApp
-    val logs by app.logRepository.observeRecentLogs().collectAsState(initial = emptyList())
+    val logs by app.logRepository.observeRecentLogs().collectAsState(initial = null)
     val clipboard = LocalClipboardManager.current
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -79,7 +79,17 @@ fun LogsScreen() {
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        if (logs.isEmpty()) {
+        val logList = logs
+        if (logList == null) {
+            Box(
+                Modifier
+                    .padding(padding)
+                    .fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                androidx.compose.material3.CircularProgressIndicator()
+            }
+        } else if (logList.isEmpty()) {
             Box(
                 Modifier
                     .padding(padding)
@@ -97,7 +107,7 @@ fun LogsScreen() {
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(logs, key = { it.id }) { log ->
+                items(logList, key = { it.id }) { log ->
                     LogRow(
                         log = log,
                         onClick = { detail = log },
