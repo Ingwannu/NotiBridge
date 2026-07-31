@@ -107,6 +107,7 @@ class DeliveryWorker(
                 durationMillis = System.currentTimeMillis() - startedAt,
                 dedupeKey = task.dedupeKey,
             )
+            app.resultNotification(hook, payload, success = true, responseCode = outcome.responseCode, error = "")
             return
         }
 
@@ -123,6 +124,13 @@ class DeliveryWorker(
                 requestBodyPreview = outcome.requestBodyPreview,
                 durationMillis = System.currentTimeMillis() - startedAt,
                 dedupeKey = task.dedupeKey,
+            )
+            app.resultNotification(
+                hook,
+                payload,
+                success = false,
+                responseCode = outcome.responseCode,
+                error = outcome.errorMessage,
             )
         } else {
             val delay = DeliveryTaskRepository.backoffFor(task.attemptCount)

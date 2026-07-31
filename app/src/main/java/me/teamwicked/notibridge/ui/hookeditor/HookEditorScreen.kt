@@ -175,7 +175,7 @@ fun HookEditorScreen(
                 label = "Content-Type",
                 options = ContentType.entries,
                 selected = hook.contentType,
-                optionLabel = { "${it.label} (${it.mimeType})" },
+                optionLabel = { it.label },
                 onSelected = { hook = hook.copy(contentType = it) },
             )
 
@@ -412,36 +412,30 @@ private fun <T> EnumDropdown(
     optionLabel: (T) -> String,
     onSelected: (T) -> Unit,
 ) {
-    // Plain dialog picker. ExposedDropdownMenuBox has been a recurring crash
-    // source across material3 versions on some OEM keyboards/themes; this has
-    // zero exotic dependencies.
-    var open by remember { mutableStateOf(false) }
-    OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
-        Text("$label: ${optionLabel(selected)}")
-    }
-    if (open) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { open = false },
-            title = { Text(label) },
-            text = {
-                Column {
-                    options.forEach { option ->
-                        TextButton(
-                            onClick = {
-                                onSelected(option)
-                                open = false
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(optionLabel(option))
-                        }
-                    }
+    // Inline chip picker. We deliberately avoid dialogs/dropdowns here: on
+    // some OEM devices the material3 popup path is what crashed the editor.
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.titleSmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.take(3).forEach { option ->
+                FilterChip(
+                    selected = selected == option,
+                    onClick = { onSelected(option) },
+                    label = { Text(optionLabel(option)) },
+                )
+            }
+        }
+        if (options.size > 3) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                options.drop(3).forEach { option ->
+                    FilterChip(
+                        selected = selected == option,
+                        onClick = { onSelected(option) },
+                        label = { Text(optionLabel(option)) },
+                    )
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { open = false }) { Text("닫기") }
-            },
-        )
+            }
+        }
     }
 }
 

@@ -32,6 +32,24 @@ class NotiBridgeApp : Application() {
         )
     }
 
+    /** Posts a user-visible result notification honoring the settings toggles. */
+    fun resultNotification(
+        hook: me.teamwicked.notibridge.model.Hook,
+        payload: me.teamwicked.notibridge.model.NotificationPayload,
+        success: Boolean,
+        responseCode: Int?,
+        error: String,
+    ) {
+        me.teamwicked.notibridge.service.ResultNotifier.notifyResult(
+            context = this,
+            hook = hook,
+            payload = payload,
+            success = success,
+            responseCode = responseCode,
+            errorMessage = error,
+        )
+    }
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannels()

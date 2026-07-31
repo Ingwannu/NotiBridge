@@ -50,6 +50,8 @@ fun SettingsScreen() {
     var batteryOk by remember { mutableStateOf(PermissionUtils.isIgnoringBatteryOptimizations(context)) }
     var maxConcurrent by remember { mutableStateOf(settings.maxConcurrentDeliveries) }
     var dedupeSeconds by remember { mutableStateOf(settings.dedupeWindowMs / 1000f) }
+    var notifySuccess by remember { mutableStateOf(me.teamwicked.notibridge.service.ResultNotifier.notifySuccessEnabled(context)) }
+    var notifyFailure by remember { mutableStateOf(me.teamwicked.notibridge.service.ResultNotifier.notifyFailureEnabled(context)) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -164,6 +166,46 @@ fun SettingsScreen() {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+            }
+
+            Card {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("결과 알림", style = MaterialTheme.typography.titleMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("실패 시 알림", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "최종 실패한 전송을 시스템 알림으로 표시",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = notifyFailure,
+                            onCheckedChange = {
+                                notifyFailure = it
+                                me.teamwicked.notibridge.service.ResultNotifier.setNotifyFailure(context, it)
+                            },
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("성공 시 알림", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "매 전송 성공을 시스템 알림으로 표시",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = notifySuccess,
+                            onCheckedChange = {
+                                notifySuccess = it
+                                me.teamwicked.notibridge.service.ResultNotifier.setNotifySuccess(context, it)
+                            },
+                        )
+                    }
                 }
             }
         }
