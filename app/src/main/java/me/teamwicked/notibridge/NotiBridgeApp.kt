@@ -84,8 +84,13 @@ class NotiBridgeApp : Application() {
             NotificationChannel(
                 CHANNEL_SERVICE,
                 getString(R.string.notification_channel_service),
-                NotificationManager.IMPORTANCE_MIN,
-            ),
+                // LOW (not MIN): MIN channels let some OEMs treat the
+                // foreground notification as dismissible-with-kill; LOW keeps
+                // the service visibly alive and re-postable.
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply {
+                setShowBadge(false)
+            },
         )
         manager.createNotificationChannel(
             NotificationChannel(

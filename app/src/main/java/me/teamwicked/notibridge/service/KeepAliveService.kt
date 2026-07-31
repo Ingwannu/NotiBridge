@@ -24,12 +24,25 @@ import me.teamwicked.notibridge.ui.MainActivity
  */
 class KeepAliveService : Service() {
 
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val reposter = object : Runnable {
+        override fun run() {
+            // Re-post the foreground notification periodically. If the user
+            // swipes it away, the next tick puts it back, exactly like
+            // notifyhook's resilient foreground notification.
+            startForegroundCompat()
+            handler.postDelayed(this, REPOST_INTERVAL_MS)
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // POST_NOTIFICATIONS denied on Android 13+ makes startForeground throw;
         // fall back to a normal sticky service instead of crashing the app.
         runCatching { startForegroundCompat() }.onFailure {
             android.util.Log.w(TAG, "startForeground failed, running as background service", it)
         }
+        handler.removeCallbacks(reposter)
+        handler.postDelayed(reposter, REPOST_INTERVAL_MS)
         // If the listener lost its binding (OEM kill, permission revoke),
         // requestRebind nudges the system to restore it.
         runCatching {
@@ -55,7 +68,9 @@ class KeepAliveService : Service() {
             .setContentText(getString(R.string.service_notification_text))
             .setContentIntent(openAppIntent)
             .setOngoing(true)
+            .setShowWhen(false)
             .setSilent(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
 
@@ -79,6 +94,7 @@ class KeepAliveService : Service() {
 
     companion object {
         private const val TAG = "KeepAliveService"
+        private const val REPOST_INTERVAL_MS = 30_000L
 
         fun start(context: Context) {
             val intent = Intent(context, KeepAliveService::class.java)
@@ -118,6 +134,7 @@ class KeepAliveService : Service() {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(reposter)
         markRunning(this, false)
         super.onDestroy()
     }
