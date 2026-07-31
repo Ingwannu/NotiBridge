@@ -80,6 +80,16 @@ interface DeliveryTaskDao {
 
     @Query("DELETE FROM delivery_tasks WHERE status IN ('SUCCESS', 'FAILED')")
     suspend fun deleteTerminal()
+
+    /**
+     * Tasks left in RUNNING by a killed/cancelled worker. Re-queued by the
+     * repository so a crash never strands a delivery forever.
+     */
+    @Query(
+        "UPDATE delivery_tasks SET status = 'PENDING', updatedAt = :now " +
+            "WHERE status = 'RUNNING' AND updatedAt < :staleBefore",
+    )
+    suspend fun requeueStaleRunning(staleBefore: Long, now: Long): Int
 }
 
 @Dao

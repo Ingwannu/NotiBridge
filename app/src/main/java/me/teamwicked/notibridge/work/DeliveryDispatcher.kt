@@ -35,6 +35,11 @@ class DeliveryWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
 
+    companion object {
+        /** Safety bound so a constantly-refilling queue cannot pin one worker. */
+        private const val MAX_BATCHES_PER_RUN = 10
+    }
+
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val app = applicationContext as NotiBridgeApp
         val taskRepo = app.deliveryTaskRepository
@@ -42,21 +47,27 @@ class DeliveryWorker(
         val logRepo = app.logRepository
         val maxConcurrent = app.settingsRepository.maxConcurrentDeliveries
 
-        val tasks = taskRepo.claimDue(maxConcurrent)
-        if (tasks.isEmpty()) {
-            DeliveryDispatcher.scheduleNext(applicationContext)
-            return@withContext Result.success()
-        }
+        // A previous worker may have died mid-flight; rescue its tasks.
+        taskRepo.requeueStaleRunning()
 
-        val semaphore = Semaphore(maxConcurrent)
-        coroutineScope {
-            tasks.map { task ->
-                async {
-                    semaphore.withPermit {
-                        deliverOne(taskRepo, sender, logRepo, task)
+        // Drain the queue in batches: more notifications may arrive while we
+        // are sending, and claimDue only returns up to maxConcurrent at once.
+        var batches = 0
+        while (batches < MAX_BATCHES_PER_RUN) {
+            batches++
+            val tasks = taskRepo.claimDue(maxConcurrent)
+            if (tasks.isEmpty()) break
+
+            val semaphore = Semaphore(maxConcurrent)
+            coroutineScope {
+                tasks.map { task ->
+                    async {
+                        semaphore.withPermit {
+                            deliverOne(taskRepo, sender, logRepo, task)
+                        }
                     }
-                }
-            }.awaitAll()
+                }.awaitAll()
+            }
         }
 
         DeliveryDispatcher.scheduleNext(applicationContext)
@@ -120,28 +131,35 @@ class DeliveryWorker(
 object DeliveryDispatcher {
 
     private const val WORK_NAME = "notibridge-delivery"
+    private const val RETRY_WORK_NAME = "notibridge-delivery-retry"
 
+    /**
+     * Run due work now. Uses APPEND_OR_REPLACE so a kick that arrives while a
+     * worker is draining the queue is not silently dropped (REPLACE would
+     * cancel the in-flight worker; KEEP would drop the new work entirely).
+     */
     fun kick(context: Context) {
         val request = OneTimeWorkRequestBuilder<DeliveryWorker>()
             .setConstraints(networkConstraints())
             .build()
         WorkManager.getInstance(context)
-            .enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.REPLACE, request)
+            .enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
 
     /** Rearms the worker for the earliest pending retry, if any. */
     suspend fun scheduleNext(context: Context) {
         val app = context.applicationContext as NotiBridgeApp
-        val nextAt = app.deliveryTaskRepository.nextRetryAt() ?: return
         val active = app.deliveryTaskRepository.activeCount()
         if (active == 0) return
+        val nextAt = app.deliveryTaskRepository.nextRetryAt()
+            ?: System.currentTimeMillis()
         val delay = (nextAt - System.currentTimeMillis()).coerceAtLeast(0L)
         val request = OneTimeWorkRequestBuilder<DeliveryWorker>()
             .setInitialDelay(delay, TimeUnit.MILLISECONDS)
             .setConstraints(networkConstraints())
             .build()
         WorkManager.getInstance(context)
-            .enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.REPLACE, request)
+            .enqueueUniqueWork(RETRY_WORK_NAME, ExistingWorkPolicy.REPLACE, request)
     }
 
     private fun networkConstraints(): Constraints =

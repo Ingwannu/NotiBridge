@@ -78,6 +78,29 @@ class GlobalVariableRepository(private val db: AppDatabase) {
 class DeliveryTaskRepository(private val db: AppDatabase) {
 
     suspend fun enqueue(hook: Hook, payload: NotificationPayload): DeliveryTaskEntity {
+        val task = createTask(hook, payload)
+        db.deliveryTaskDao().upsert(task)
+        return task
+    }
+
+    /**
+     * Dedupe-aware enqueue. Inserts inside a transaction only when no recent
+     * duplicate exists, so concurrent notifications can never double-enqueue.
+     * Returns true when the task was actually enqueued.
+     */
+    suspend fun enqueueIfNotDuplicate(
+        hook: Hook,
+        payload: NotificationPayload,
+        windowMs: Long,
+    ): Boolean = db.withTransaction {
+        if (isDuplicate(hook.id, payload.dedupeKey, windowMs)) {
+            return@withTransaction false
+        }
+        enqueue(hook, payload)
+        true
+    }
+
+    private suspend fun createTask(hook: Hook, payload: NotificationPayload): DeliveryTaskEntity {
         val now = System.currentTimeMillis()
         val task = DeliveryTaskEntity(
             id = java.util.UUID.randomUUID().toString(),
@@ -113,6 +136,19 @@ class DeliveryTaskRepository(private val db: AppDatabase) {
     suspend fun activeCount(): Int = db.deliveryTaskDao().activeCount()
 
     suspend fun nextRetryAt(): Long? = db.deliveryTaskDao().nextRetryAt()
+
+    /**
+     * Returns orphaned RUNNING rows to PENDING. A task is stale when it has
+     * been "running" longer than the worst-case hook timeout (120s) plus
+     * margin; any such row means its worker died mid-flight.
+     */
+    suspend fun requeueStaleRunning() {
+        val now = System.currentTimeMillis()
+        db.deliveryTaskDao().requeueStaleRunning(
+            staleBefore = now - STALE_RUNNING_MS,
+            now = now,
+        )
+    }
 
     suspend fun markRetry(task: DeliveryTaskEntity, error: String, nextAt: Long) {
         db.deliveryTaskDao().update(
@@ -150,6 +186,8 @@ class DeliveryTaskRepository(private val db: AppDatabase) {
 
     companion object {
         const val MAX_ATTEMPTS = 8
+        private const val STALE_RUNNING_MS = 3 * 60_000L
+
         /**
          * First retry delay; doubles each attempt, capped at [MAX_BACKOFF_MS].
          * Sequence: 10s, 20s, 40s, ..., capped at 15min.

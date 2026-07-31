@@ -52,16 +52,14 @@ class NotificationHookService : NotificationListenerService() {
             var enqueued = false
             hooks.forEach { hook ->
                 if (!matches(hook, payload)) return@forEach
-                if (app.deliveryTaskRepository.isDuplicate(
-                        hook.id,
-                        payload.dedupeKey,
-                        app.settingsRepository.dedupeWindowMs,
-                    )
-                ) {
-                    return@forEach
-                }
-                app.deliveryTaskRepository.enqueue(hook, payload)
-                enqueued = true
+                // Check + insert run in one transaction so two notifications
+                // arriving back-to-back cannot both pass the dedupe check.
+                val inserted = app.deliveryTaskRepository.enqueueIfNotDuplicate(
+                    hook = hook,
+                    payload = payload,
+                    windowMs = app.settingsRepository.dedupeWindowMs,
+                )
+                if (inserted) enqueued = true
             }
             if (enqueued) {
                 DeliveryDispatcher.kick(this@NotificationHookService)

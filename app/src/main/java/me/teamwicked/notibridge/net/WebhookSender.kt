@@ -12,6 +12,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /** Outcome of one HTTP attempt. */
 data class SendOutcome(
@@ -52,7 +53,21 @@ class WebhookSender(
         val bodyBytes: ByteArray? = when {
             !hook.method.hasBody -> null
             overrideBody != null -> overrideBody
-            hook.bodyFileBytes() != null -> hook.bodyFileBytes()
+            hook.bodyFileBytes() != null -> {
+                val raw = hook.bodyFileBytes()!!
+                if (hook.contentType == ContentType.BINARY) {
+                    raw
+                } else {
+                    // Text-based bodies from a file still get placeholder
+                    // substitution; binary stays byte-exact.
+                    TemplateEngine.render(
+                        template = raw.toString(Charsets.UTF_8),
+                        payload = payload,
+                        variables = extraction.localVariables,
+                        globals = globals,
+                    ).toByteArray(Charsets.UTF_8)
+                }
+            }
             else -> TemplateEngine.render(
                 template = hook.bodyTemplate,
                 payload = payload,
@@ -72,7 +87,24 @@ class WebhookSender(
             hook.contentType.mimeType.toMediaTypeOrNull(),
         )
 
-        val requestBuilder = Request.Builder().url(hook.url.trim())
+        // URL placeholders are substituted too, which matters for GET hooks
+        // that carry data in the query string instead of a body.
+        val resolvedUrl = TemplateEngine.render(
+            template = hook.url.trim(),
+            payload = payload,
+            variables = extraction.localVariables,
+            globals = globals,
+        )
+        val httpUrl = resolvedUrl.toHttpUrlOrNull()
+            ?: return SendOutcome(
+                success = false,
+                responseCode = null,
+                responseBody = "",
+                errorMessage = "유효하지 않은 URL: $resolvedUrl",
+                elapsedMillis = 0,
+                requestBodyPreview = "",
+            )
+        val requestBuilder = Request.Builder().url(httpUrl)
         hook.headers.forEach { (name, value) ->
             if (name.isNotBlank()) requestBuilder.addHeader(name.trim(), value)
         }
