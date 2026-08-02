@@ -21,6 +21,9 @@ class BootReceiver : BroadcastReceiver() {
             Intent.ACTION_MY_PACKAGE_REPLACED,
             "android.intent.action.QUICKBOOT_POWERON",
             -> {
+                // If the user turned the service off before rebooting, that
+                // choice must survive the reboot too.
+                if (!KeepAliveService.isEnabledByUser(context)) return
                 KeepAliveService.start(context)
                 DeliveryDispatcher.kick(context)
             }

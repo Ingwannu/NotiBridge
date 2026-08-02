@@ -103,16 +103,35 @@ class KeepAliveService : Service() {
         private const val REPOST_INTERVAL_MS = 5_000L
 
         /**
+         * User intent: should the service be running at all? Everything that
+         * can restart the service (watchdog, boot, listener rebind, dismiss
+         * re-post) checks this first, so an explicit user stop actually sticks.
+         */
+        fun isEnabledByUser(context: Context): Boolean =
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getBoolean(KEY_USER_ENABLED, true)
+
+        private fun setEnabledByUser(context: Context, enabled: Boolean) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_USER_ENABLED, enabled)
+                .apply()
+        }
+
+        /**
          * Re-posts the foreground notification by bouncing the service. Cheap
          * enough for a dismiss-triggered immediate refresh.
          */
         fun repostNotification(context: Context) {
+            if (!isEnabledByUser(context)) return
             runCatching {
                 context.startForegroundService(Intent(context, KeepAliveService::class.java))
             }
         }
 
+        /** Starts the service only when the user hasn't explicitly stopped it. */
         fun start(context: Context) {
+            if (!isEnabledByUser(context)) return
             val intent = Intent(context, KeepAliveService::class.java)
             // From a boot receiver, FGS launch restrictions (Android 12+)
             // can throw; retry as a plain service so the app never crashes
@@ -121,7 +140,18 @@ class KeepAliveService : Service() {
                 .recoverCatching { context.startService(intent) }
         }
 
+        /** Explicit user start from the Settings toggle: always honored. */
+        fun startByUser(context: Context) {
+            setEnabledByUser(context, true)
+            val intent = Intent(context, KeepAliveService::class.java)
+            runCatching { context.startForegroundService(intent) }
+                .recoverCatching { context.startService(intent) }
+        }
+
+        /** Explicit user stop: stops the service AND cancels every restart path. */
         fun stop(context: Context) {
+            setEnabledByUser(context, false)
+            me.teamwicked.notibridge.receiver.WatchdogReceiver.cancel(context)
             context.stopService(Intent(context, KeepAliveService::class.java))
         }
 
@@ -141,6 +171,7 @@ class KeepAliveService : Service() {
 
         private const val PREFS = "notibridge_service_state"
         private const val KEY_RUNNING = "keep_alive_running"
+        private const val KEY_USER_ENABLED = "keep_alive_user_enabled"
     }
 
     override fun onCreate() {

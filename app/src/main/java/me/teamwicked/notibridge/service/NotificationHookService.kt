@@ -34,6 +34,12 @@ class NotificationHookService : NotificationListenerService() {
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        // The system rebinds the listener periodically; only (re)start the
+        // keep-alive service if the user actually wants it running.
+        if (!KeepAliveService.isEnabledByUser(this)) {
+            DeliveryDispatcher.kick(this)
+            return
+        }
         KeepAliveService.start(this)
         // A freshly (re)bound listener can mean the process was killed;
         // drain anything left in the queue from the previous run.

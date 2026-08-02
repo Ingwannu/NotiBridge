@@ -45,7 +45,7 @@ fun SettingsScreen() {
     val app = context.applicationContext as NotiBridgeApp
     val settings = app.settingsRepository
 
-    var serviceRunning by remember { mutableStateOf(KeepAliveService.isRunning(context)) }
+    var serviceRunning by remember { mutableStateOf(KeepAliveService.isEnabledByUser(context)) }
     var hasAccess by remember { mutableStateOf(PermissionUtils.hasNotificationAccess(context)) }
     var batteryOk by remember { mutableStateOf(PermissionUtils.isIgnoringBatteryOptimizations(context)) }
     var maxConcurrent by remember { mutableStateOf(settings.maxConcurrentDeliveries) }
@@ -57,7 +57,7 @@ fun SettingsScreen() {
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                serviceRunning = KeepAliveService.isRunning(context)
+                serviceRunning = KeepAliveService.isEnabledByUser(context)
                 hasAccess = PermissionUtils.hasNotificationAccess(context)
                 batteryOk = PermissionUtils.isIgnoringBatteryOptimizations(context)
             }
@@ -97,7 +97,7 @@ fun SettingsScreen() {
                             checked = serviceRunning,
                             onCheckedChange = { on ->
                                 if (on) {
-                                    KeepAliveService.start(context)
+                                    KeepAliveService.startByUser(context)
                                 } else {
                                     KeepAliveService.stop(context)
                                 }
@@ -108,7 +108,7 @@ fun SettingsScreen() {
                     OutlinedButton(
                         onClick = {
                             KeepAliveService.stop(context)
-                            KeepAliveService.start(context)
+                            KeepAliveService.startByUser(context)
                             serviceRunning = true
                         },
                         modifier = Modifier.fillMaxWidth(),

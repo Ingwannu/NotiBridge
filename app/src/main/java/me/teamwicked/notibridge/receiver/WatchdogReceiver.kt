@@ -19,6 +19,9 @@ class WatchdogReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION) return
+        // Respect the user's explicit stop; without this the watchdog keeps
+        // reviving the service every 15 minutes after the user turned it off.
+        if (!KeepAliveService.isEnabledByUser(context)) return
         KeepAliveService.start(context)
         DeliveryDispatcher.kick(context)
         schedule(context) // inexact repeating alarms can be dropped by OEMs; re-arm every fire
@@ -30,6 +33,7 @@ class WatchdogReceiver : BroadcastReceiver() {
         private const val INTERVAL_MS = 15 * 60 * 1000L
 
         fun schedule(context: Context) {
+            if (!KeepAliveService.isEnabledByUser(context)) return
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             runCatching {
                 alarmManager.setInexactRepeating(
